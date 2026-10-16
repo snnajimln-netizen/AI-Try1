@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LEO - Your Assistant</title>
+<style>
+:root{--bg:#f4f6fb;--card:#fff;--tx:#14182b;--mut:#666d85;--ac:#2563eb;--bd:#dde2ee;--red:#d92d20;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1220;--card:#181e33;--tx:#eef1fb;--mut:#98a0bb;--bd:#2a3254;--ac:#5b8cff}}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--tx)}
+.w{max-width:760px;margin:0 auto;padding:14px}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.orb{width:64px;height:64px;border-radius:50%;border:0;background:var(--ac);color:#fff;font-weight:700;font-size:16px;cursor:pointer;flex:none}
+.orb.on{animation:p 1.4s infinite}@keyframes p{50%{box-shadow:0 0 0 14px #2563eb33}}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+h1{font-size:20px;margin:0}h2{font-size:15px;margin:0 0 8px}.m{color:var(--mut);font-size:13px}
+input,select,textarea,button.b{font:inherit;padding:9px;border-radius:9px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);max-width:100%}
+button.b{background:var(--ac);color:#fff;border:0;cursor:pointer}button.r{background:var(--red)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}.row>*{flex:1 1 140px}
+.tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:10px}.tabs button{flex:none;padding:8px 12px;border-radius:20px;border:1px solid var(--bd);background:var(--card);color:var(--tx);cursor:pointer}
+.tabs button.a{background:var(--ac);color:#fff;border-color:var(--ac)}
+.it{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--bd)}
+.log{max-height:150px;overflow:auto;font-size:14px}.sos{background:var(--red);color:#fff;border:0;padding:14px;width:100%;font-size:16px;border-radius:12px;font-weight:700}
+</style></head><body><div class="w">
+<div class="top"><button class="orb" id="orb">Sleep</button><div><h1>LEO</h1><div class="m" id="st">Tap the button, then say "Hey LEO"</div></div></div>
+<div class="card"><h2>Talk to LEO</h2><div class="log" id="log"></div>
+<div class="row"><input id="cmd" placeholder="Or type a command, e.g. play lofi on youtube"><button class="b" id="send" style="flex:0 0 auto">Send</button></div>
+<div class="m">Try: "search youtube for nasheed" · "open facebook" · "remind me to pay wifi bill at 6 pm" · "call 017XXXXXXXX" · "what time is it" · "weather" · "Goodbye LEO"</div></div>
+<div class="tabs" id="tabs"></div><div id="pane"></div>
+<button class="sos" id="sos">EMERGENCY - Call / SMS my contacts</button>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const D={name:'Andy',voice:'female',on:true,daily:true,items:[],health:{},contacts:[],lastGreet:'',checkinHrs:2,lastOk:Date.now()};
+let S=D;try{S=Object.assign({},D,JSON.parse(localStorage.getItem('leo')||'{}'))}catch(e){}
+const save=()=>{try{localStorage.setItem('leo',JSON.stringify(S))}catch(e){}};
+let awake=false,listening=false,rec=null,tab='Tasks';
+function log(t,who){const d=document.createElement('div');d.textContent=(who||'LEO')+': '+t;$('log').appendChild(d);$('log').scrollTop=1e9}
+function say(t){log(t);try{const u=new SpeechSynthesisUtterance(t),v=speechSynthesis.getVoices();
+const f=/female|zira|samantha|susan|karen|google uk english female|victoria/i,m=/male|david|daniel|alex|mark|google uk english male|fred/i;
+const pick=v.find(x=>(S.voice==='female'?f:m).test(x.name)&&!(S.voice==='female'&&/\bmale\b/i.test(x.name)&&!/female/i.test(x.name)));if(pick)u.voice=pick;
+u.pitch=S.voice==='female'?1.15:0.8;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
+function notify(t){say(t);try{if(Notification.permission==='granted')new Notification('LEO',{body:t})}catch(e){}}
+const open_=u=>{window.open(u,'_blank')||(location.href=u)};
+function wake(){awake=true;$('st').textContent='LEO is awake - listening...';const today=new Date().toDateString();
+if(S.lastGreet!==today){S.lastGreet=today;save();say(`Hey ${S.name}, Assalamu Alaikum, I'm LEO, what can I do for you today?`)}else say('Yes, I am listening.')}
+function sleep(){awake=false;$('st').textContent='Sleeping - say "Hey LEO"';say('Goodbye '+S.name+'. Say Hey LEO when you need me.')}
+function when(t){const m=t.match(/at (\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);if(!m)return null;let h=+m[1];const mi=+(m[2]||0),ap=(m[3]||'').toLowerCase();
+if(ap==='pm'&&h<12)h+=12;if(ap==='am'&&h===12)h=0;const d=new Date();d.setHours(h,mi,0,0);if(d<new Date())d.setDate(d.getDate()+1);return d.toISOString().slice(0,16)}
+function run(raw){let t=raw.toLowerCase().trim();if(!t)return;log(raw,'You');
+if(/good\s?bye leo/.test(t))return sleep();
+if(!S.on){return say('LEO is turned off in settings.')}
+let m;
+if(m=t.match(/(?:play|search)\s+(.+?)\s+(?:on|in)\s+youtube/)||t.match(/search youtube for (.+)/)||t.match(/^play (.+)/)){say('Searching YouTube for '+m[1]);return open_('https://www.youtube.com/results?search_query='+encodeURIComponent(m[1]))}
+if(m=t.match(/(?:search|google) (?:google )?(?:for )?(.+)/)){say('Searching the web for '+m[1]);return open_('https://www.google.com/search?q='+encodeURIComponent(m[1]))}
+if(m=t.match(/(?:open|go to) (youtube|facebook|messenger|whatsapp|gmail|google drive|drive|imo)/)){const u={youtube:'https://www.youtube.com',facebook:'https://www.facebook.com',messenger:'https://www.messenger.com',whatsapp:'https://web.whatsapp.com','gmail':'https://mail.google.com','google drive':'https://drive.google.com',drive:'https://drive.google.com',imo:'https://imo.im'}[m[1]];say('Opening '+m[1]);return open_(u)}
+if(m=t.match(/(?:open|visit|browse) (?:website )?([a-z0-9.-]+\.[a-z]{2,}\S*)/)){say('Opening '+m[1]);return open_('https://'+m[1])}
+if(m=t.match(/call ([+\d][\d\s-]{5,})/)){say('Calling '+m[1]);return location.href='tel:'+m[1].replace(/[\s-]/g,'')}
+if(m=t.match(/(?:sms|text|message) ([+\d][\d\s-]{5,}) (?:saying|that|say)\s+(.+)/)){say('Opening SMS');return location.href='sms:'+m[1].replace(/[\s-]/g,'')+'?body='+encodeURIComponent(m[2])}
+if(m=t.match(/whatsapp ([+\d]{6,}) (?:saying|that)\s+(.+)/)){return open_('https://wa.me/'+m[1].replace(/\D/g,'')+'?text='+encodeURIComponent(m[2]))}
+if(m=t.match(/email (\S+@\S+) (?:saying|about)\s+(.+)/)){return location.href='mailto:'+m[1]+'?subject='+encodeURIComponent(m[2])}
+if(m=t.match(/(?:remind me to|add task|task)\s+(.+?)(?:\s+(at .+))?$/)){const w=when(m[2]||'')||new Date(Date.now()+36e5).toISOString().slice(0,16);S.items.push({type:'task',text:m[1],when:w});save();render();return say(`Done. I will remind you to ${m[1]} at ${w.slice(11)}.`)}
+if(/what.*time|time now/.test(t))return say('It is '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}));
+if(/what.*(date|day)/.test(t))return say('Today is '+new Date().toDateString());
+if(/weather/.test(t)){say('Opening the weather');return open_('https://www.google.com/search?q=weather+Dhaka')}
+if(/emergency|help me|i am in danger/.test(t))return sos();
+if(/where am i|my location/.test(t)){return navigator.geolocation.getCurrentPosition(p=>{say('Opening your location on the map');open_(`https://maps.google.com/?q=${p.coords.latitude},${p.coords.longitude}`)},()=>say('I need location permission.'))}
+if(/photo|picture|camera/.test(t)){$('cam').click();return say('Opening the camera')}
+if(/bmi/.test(t)){const h=+S.health.h/100,w=+S.health.w;return say(h&&w?`Your BMI is ${(w/h/h).toFixed(1)}`:'Please enter your height and weight in the Health tab.')}
+say("Sorry, I don't know that command yet. I can search, open sites, call, SMS, set reminders and more.")}
+function sos(){say('Emergency mode. Choose a contact.');tab='Emergency';render();window.scrollTo(0,document.body.scrollHeight)}
+function setupRec(){const R=window.SpeechRecognition||window.webkitSpeechRecognition;if(!R){$('st').textContent='Voice not supported in this browser - use typing, or Chrome/Safari';return}
+rec=new R();rec.continuous=true;rec.interimResults=false;rec.lang='en-US';
+rec.onresult=e=>{const t=e.results[e.results.length-1][0].transcript.trim(),l=t.toLowerCase();
+if(/good\s?bye leo/.test(l))return run(t);
+const m=l.match(/(?:hey|hi|hello|a)\s?leo[, ]*(.*)/);if(m){if(!S.on)return;if(!awake)wake();if(m[1])run(m[1]);return}
+if(awake)run(t)};
+rec.onend=()=>{if(listening)try{rec.start()}catch(e){}};rec.onerror=()=>{}}
+$('orb').onclick=()=>{if(!rec)setupRec();if(!rec)return;listening=!listening;$('orb').classList.toggle('on',listening);$('orb').textContent=listening?'Listening':'Sleep';
+if(listening){try{rec.start();Notification.requestPermission&&Notification.requestPermission()}catch(e){}$('st').textContent='Say "Hey LEO"'}else{try{rec.stop()}catch(e){}awake=false;$('st').textContent='Microphone off'}};
+$('send').onclick=()=>{const v=$('cmd').value;$('cmd').value='';if(!awake&&S.on&&!/good\s?bye/.test(v.toLowerCase()))wake();run(v)};
+$('cmd').onkeydown=e=>{if(e.key==='Enter')$('send').click()};
+$('sos').onclick=sos;
+/* reminders engine - runs while LEO is open */
+setInterval(()=>{const n=new Date(),hm=n.toTimeString().slice(0,5),td=n.toDateString();let ch=false;
+S.items.forEach(i=>{if(i.done)return;
+if(i.type==='routine'){if(S.daily&&i.when===hm&&i.last!==td){i.last=td;ch=true;notify(`${S.name}, time to ${i.text}.`)}}
+else if(!i.fired&&i.when&&new Date(i.when)<=n){i.fired=true;ch=true;notify(`Reminder: ${i.text}${i.type==='bill'?' - bill is due':''}.`)}});
+if(S.contacts.length&&Date.now()-S.lastOk>S.checkinHrs*36e5&&!window._warn){window._warn=1;notify('You have not responded for a while. Are you OK? Tap "I am OK" or I will open emergency contacts.');tab='Emergency';render()}
+if(ch){save();render()}},15000);
+/* UI */
+const TABS=['Tasks','Routine','Bills','Health','Emergency','Settings'];
+function tabs(){$('tabs').innerHTML='';TABS.forEach(t=>{const b=document.createElement('button');b.textContent=t;b.className=t===tab?'a':'';b.onclick=()=>{tab=t;render()};$('tabs').appendChild(b)})}
+function listFor(type,ph,timeType){let h=`<div class="card"><h2>${type==='task'?'Tasks & schedule':type==='bill'?'Bills (electricity, water, wifi...)':'Daily routine (exercise, brushing, bath, meals...)'}</h2><div class="row"><input id="ft" placeholder="${ph}"><input id="fw" type="${timeType}">`+(type==='bill'?'<input id="fa" placeholder="Fee / amount">':'')+`<button class="b" onclick="addI('${type}')">Add</button></div>`;
+S.items.map((x,i)=>[x,i]).filter(([x])=>x.type===type).forEach(([x,i])=>{h+=`<div class="it"><span>${x.done?'✅ ':''}${x.text} <span class="m">· ${x.when||''}</span></span><span><button class="b" onclick="S.items[${i}].done=!S.items[${i}].done;save();render()">✓</button> <button class="b r" onclick="S.items.splice(${i},1);save();render()">✕</button></span></div>`});return h+'</div>'}
+window.addI=type=>{const t=$('ft').value.trim();if(!t)return;const a=$('fa')?$('fa').value.trim():'';S.items.push({type,text:t+(a?' ('+a+')':''),when:$('fw').value});save();render()};
+function render(){tabs();let h='';
+if(tab==='Tasks')h=listFor('task','What to do','datetime-local');
+if(tab==='Routine')h=listFor('routine','e.g. Exercise, brush teeth, lunch','time')+`<div class="card"><label><input type="checkbox" ${S.daily?'checked':''} onchange="S.daily=this.checked;save()"> Daily routine reminders ON</label></div>`;
+if(tab==='Bills')h=listFor('bill','e.g. Wifi bill','datetime-local');
+if(tab==='Health'){const H=S.health;h=`<div class="card"><h2>Health profile (stays on this device)</h2><div class="row">${[['age','Age'],['h','Height (cm)'],['w','Weight (kg)'],['blood','Blood group'],['skin','Skin / hair / nails notes'],['cond','Physical or mental conditions'],['meds','Medicines'],['dr','Doctor name / phone']].map(([k,l])=>`<input placeholder="${l}" value="${(H[k]||'').toString().replace(/"/g,'&quot;')}" oninput="S.health['${k}']=this.value;save()">`).join('')}</div><p class="m">LEO gives general wellness reminders only. It is not a doctor.</p></div>`}
+if(tab==='Emergency'){h=`<div class="card"><h2>Emergency contacts</h2><div class="row"><input id="cn" placeholder="Name"><input id="cp" placeholder="Phone (+8801...)"><button class="b" onclick="S.contacts.push({n:cn.value,p:cp.value});save();render()">Add</button></div>`;
+S.contacts.forEach((c,i)=>{h+=`<div class="it"><span>${c.n} · ${c.p}</span><span><a href="tel:${c.p}"><button class="b">Call</button></a> <a href="sms:${c.p}?body=${encodeURIComponent('EMERGENCY: '+S.name+' needs help. Please contact me now.')}"><button class="b">SMS</button></a> <a target="_blank" href="https://wa.me/${c.p.replace(/\D/g,'')}?text=${encodeURIComponent('EMERGENCY: '+S.name+' needs help.')}"><button class="b">WhatsApp</button></a> <button class="b r" onclick="S.contacts.splice(${i},1);save();render()">✕</button></span></div>`});
+h+=`<div class="row"><a href="tel:999"><button class="b r">Call 999</button></a><button class="b" onclick="S.lastOk=Date.now();window._warn=0;say('Good to hear you are OK.')">I am OK (reset check-in)</button></div><p class="m">Safety check-in: if you don't respond within ${S.checkinHrs} hours while LEO is open, LEO alerts you and opens this screen. Phones require you to tap Call/SMS yourself.</p></div>`}
+if(tab==='Settings')h=`<div class="card"><h2>Settings</h2><div class="row"><label>Your name <input value="${S.name}" oninput="S.name=this.value;save()"></label><label>LEO voice <select onchange="S.voice=this.value;save();say('This is my new voice.')"><option value="female" ${S.voice==='female'?'selected':''}>Female</option><option value="male" ${S.voice==='male'?'selected':''}>Male</option></select></label></div><p><label><input type="checkbox" ${S.on?'checked':''} onchange="S.on=this.checked;save()"> LEO assistant ON</label></p><p><label>Check-in hours <input type="number" min="1" value="${S.checkinHrs}" onchange="S.checkinHrs=+this.value;save()" style="width:80px"></label></p><button class="b" onclick="navigator.geolocation.getCurrentPosition(()=>say('Location allowed'),()=>say('Location denied'));navigator.mediaDevices&&navigator.mediaDevices.getUserMedia({audio:true}).catch(()=>{})">Grant mic + location permission</button><p><input type="file" id="cam" accept="image/*,video/*" capture style="display:none"></p></div>`;
+$('pane').innerHTML=h}
+speechSynthesis.onvoiceschanged=()=>{};render();
+</script></body></html>
